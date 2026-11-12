@@ -7,6 +7,7 @@ on their own (you'd normally have to press F5 to see changes).
 import argparse
 import json
 import os
+import threading
 import time
 
 import requests
@@ -17,11 +18,18 @@ from playwright.sync_api import sync_playwright
 # (250 ms) and Python is only called when the element's text really differs.
 OBSERVER_JS = """
 (selector) => {
-  let last, timer = null;
+  let last, timer = null, missTimer = null;
+  // Elements briefly vanish while a page loads, so only report "missing"
+  // if it's still gone after 10 s (e.g. you got logged out).
+  const reportMissing = () => {
+    missTimer = null;
+    if (!document.querySelector(selector)) window.__watchChanged(null);
+  };
   const check = () => {
     timer = null;
     const el = document.querySelector(selector);
-    if (!el) return;
+    if (!el) { missTimer ??= setTimeout(reportMissing, 10000); return; }
+    clearTimeout(missTimer); missTimer = null;
     const text = el.innerText.trim();
     if (text !== last) { last = text; window.__watchChanged(text); }
   };
@@ -58,9 +66,28 @@ def log(msg):
     print(time.strftime("[%H:%M:%S]"), msg, flush=True)
 
 
-def notify(topic, msg):
-    requests.post(f"https://ntfy.sh/{topic}", data=msg.encode("utf-8"),
-                  headers={"Title": "Page changed", "Priority": "urgent"}, timeout=10)
+class Notifier:
+    """Sends ntfy pushes on a background thread so the watcher never blocks."""
+
+    def __init__(self, topic, click_url):
+        self.endpoint = f"https://ntfy.sh/{topic}"
+        self.click_url = click_url
+        self.http = requests.Session()  # reuses the connection = faster sends
+
+    def send(self, msg, title="Page changed", priority="urgent"):
+        threading.Thread(target=self._send, args=(msg, title, priority), daemon=True).start()
+
+    def _send(self, msg, title, priority):
+        headers = {"Title": title, "Priority": priority, "Click": self.click_url}
+        for attempt in range(3):
+            try:
+                self.http.post(self.endpoint, data=msg.encode("utf-8"),
+                               headers=headers, timeout=10).raise_for_status()
+                return
+            except requests.RequestException as e:
+                log(f"Notify failed ({e}), retrying...")
+                time.sleep(2 ** attempt)
+        log("Gave up sending notification.")
 
 
 def read_text(page, selector):
@@ -69,15 +96,26 @@ def read_text(page, selector):
 
 def main():
     args = parse_args()
-    state = {"armed": False, "last": None}
+    notifier = Notifier(args.topic, args.url)
+    state = {"armed": False, "last": None, "missing": False}
 
     def on_change(text):
         # Ignore everything until the user has pressed Enter.
-        if not state["armed"] or text == state["last"]:
+        if not state["armed"]:
+            return
+        if text is None:
+            if not state["missing"]:
+                state["missing"] = True
+                log("Element missing - logged out?")
+                notifier.send(f"Can't find {args.selector} - logged out or page changed?",
+                              title="Watcher warning", priority="high")
+            return
+        state["missing"] = False
+        if text == state["last"]:
             return
         state["last"] = text
         log("Change detected")
-        notify(args.topic, text[:300] or "(now empty)")
+        notifier.send(text[:300] or "(now empty)")
 
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context("./profile", headless=False)
