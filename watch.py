@@ -7,12 +7,26 @@ on their own (you'd normally have to press F5 to see changes).
 import argparse
 import json
 import os
+import sys
 import threading
 import time
+from pathlib import Path
 
 import requests
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
+
+# Browser profile (holds your login cookies). Kept in local app data rather
+# than next to the script, so it never gets synced by OneDrive/Dropbox.
+PROFILE_DIR = str(Path(os.getenv("LOCALAPPDATA", Path.home())) / "page-watcher" / "profile")
+
+# Chrome slows down timers in minimized/background windows; turn that off
+# so changes are still picked up immediately.
+NO_THROTTLE_FLAGS = [
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+]
 
 # Injected into every page load in the watched tab. Mutations are batched
 # (250 ms) and Python is only called when the element's text really differs.
@@ -56,10 +70,20 @@ def parse_args():
                     help="ntfy topic (or set NTFY_TOPIC)")
     ap.add_argument("--reload", type=float, default=0, metavar="SECONDS",
                     help="also reload the page every N seconds (0 = never)")
+    ap.add_argument("--headless", action="store_true",
+                    help="hide the browser (only once the saved login works)")
     args = ap.parse_args()
     if not args.topic:
         ap.error("no ntfy topic: pass --topic or set NTFY_TOPIC")
     return args
+
+
+def keep_awake():
+    """Stop Windows from sleeping while the script runs (closing the lid still can)."""
+    if sys.platform == "win32":
+        import ctypes
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
 
 
 def log(msg):
@@ -118,7 +142,8 @@ def main():
         notifier.send(text[:300] or "(now empty)")
 
     with sync_playwright() as p:
-        ctx = p.chromium.launch_persistent_context("./profile", headless=False)
+        ctx = p.chromium.launch_persistent_context(
+            PROFILE_DIR, headless=args.headless, args=NO_THROTTLE_FLAGS)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.expose_function("__watchChanged", on_change)
         page.add_init_script(f"({OBSERVER_JS})({json.dumps(args.selector)})")
@@ -131,6 +156,7 @@ def main():
                 break
             print(f"Can't find {args.selector!r} on this page. Fix it and press Enter again.")
         state.update(armed=True, last=baseline)
+        keep_awake()
         log("Watching. Ctrl+C to stop.")
 
         # wait_for_timeout keeps Playwright processing callbacks from the page.
@@ -149,3 +175,6 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\nStopped.")
+    except PlaywrightError as e:
+        # Usually means the browser window was closed.
+        print(f"\nBrowser closed or crashed: {e}")
