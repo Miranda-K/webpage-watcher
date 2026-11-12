@@ -1,0 +1,6 @@
+# browser profile holds your login cookies - never commit it
+profile/
+.env
+__pycache__/
+*.pyc
+.venv/
