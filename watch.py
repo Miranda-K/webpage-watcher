@@ -79,11 +79,17 @@ def parse_args():
 
 
 def keep_awake():
-    """Stop Windows from sleeping while the script runs (closing the lid still can)."""
+    """Stop Windows from sleeping while the script runs (closing the lid still can).
+
+    On Modern Standby laptops, the system sleeps as soon as the display idles off,
+    so the display must be kept on too. Windows drops this when the process exits.
+    """
     if sys.platform == "win32":
         import ctypes
-        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
-        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED, ES_DISPLAY_REQUIRED = 0x80000000, 0x00000001, 0x00000002
+        ctypes.windll.kernel32.SetThreadExecutionState(
+            ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+        )
 
 
 def log(msg):
