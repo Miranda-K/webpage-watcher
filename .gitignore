@@ -4,3 +4,6 @@ profile/
 __pycache__/
 *.pyc
 .venv/
+
+# personal scripts/notes (ntfy topic, URLs) - never commit
+*.local.*
