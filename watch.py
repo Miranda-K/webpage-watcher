@@ -18,7 +18,7 @@ from playwright.sync_api import sync_playwright
 
 # Browser profile (holds your login cookies). Kept in local app data rather
 # than next to the script, so it never gets synced by OneDrive/Dropbox.
-PROFILE_DIR = str(Path(os.getenv("LOCALAPPDATA", Path.home())) / "page-watcher" / "profile")
+PROFILE_DIR = str(Path(os.getenv("LOCALAPPDATA", Path.home())) / "webpage-watcher" / "profile")
 
 # Chrome slows down timers in minimized/background windows; turn that off
 # so changes are still picked up immediately.

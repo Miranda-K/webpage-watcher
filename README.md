@@ -1,4 +1,4 @@
-# page-watcher
+# webpage-watcher
 
 Log in to a site by hand, then leave your computer. When one part of the page changes, you get a push notification on your phone through [ntfy](https://ntfy.sh).
 
@@ -26,7 +26,7 @@ python watch.py --url https://site.com/page --selector "#status"
 2. Press Enter in the terminal. The watcher starts.
 3. Leave it running. Don't close the browser window or the laptop lid.
 
-Your login is saved in `%LOCALAPPDATA%\page-watcher\profile`, so next time you may only need to press Enter.
+Your login is saved in `%LOCALAPPDATA%\webpage-watcher\profile`, so next time you may only need to press Enter.
 
 ## Options
 
