@@ -22,7 +22,8 @@ $env:NTFY_TOPIC = "your-long-random-topic"
 python watch.py --url https://site.com/page --selector "#status"
 ```
 
-QUICKSTART: ```powershell.\start.local.ps1```
+QUICKSTART: `.\start.local.ps1
+`
 
 1. A Chrome window opens. Log in and go to the page you want to watch.
 2. Press Enter in the terminal. The watcher starts.
